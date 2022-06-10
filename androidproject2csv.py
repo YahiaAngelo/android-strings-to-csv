@@ -24,16 +24,34 @@ THE SOFTWARE.
 import os, collections
 from xml.dom import minidom
 import codecs
+import csv
 from OrderedSet import OrderedSet
 
 def unescapeAndroidChar(text):
   text = text.replace("\\'", '\'')
   return text
 
-csvSep = "\t"
-defaultLangage = raw_input("Default langage ISO-639-1 code. (write en if your default langage is english):")
-pathToProject = raw_input("Path to Android project file:")
-outputFilepath = raw_input("Path to CSV file (output):")
+# Reconstruct this element's body XML from dom nodes
+def getChildXML(elem):
+    out = ""
+    for c in elem.childNodes:
+        if c.nodeType == minidom.Node.TEXT_NODE:
+            out += c.nodeValue
+        else:
+            if c.nodeType == minidom.Node.ELEMENT_NODE:
+                if c.childNodes.length == 0:
+                    out += "<" + c.nodeName + "/>"
+                else:
+                    out += "<" + c.nodeName + ">"
+                    cs = ""
+                    cs = getChildXML(c)
+                    out += cs
+                    out += "</" + c.nodeName + ">"
+    return out
+
+defaultLangage = input("Default langage ISO-639-1 code. (write en if your default langage is english):")
+pathToProject = input("Path to Android project file:")
+outputFilepath = input("Path to CSV file (output):")
 
 ressourcePath = os.path.join(pathToProject,"res")
 folderList = os.listdir(ressourcePath)
@@ -45,6 +63,8 @@ for f in folderList:
     if len(tmp) == 2:
       lang = tmp[1]
     print(lang)
+    if lang == 'v31' or lang == 'night':
+      continue
     langageDict[lang] = dict()
     stringsDict = langageDict[lang]
     valuesPath = os.path.join(ressourcePath,f)
@@ -52,7 +72,7 @@ for f in folderList:
       filePath = os.path.join(valuesPath, "strings.xml")
       if os.path.exists(filePath):
         #Open String XML
-        #print(filePath)
+        print(filePath)
         xmldoc = minidom.parse(filePath)
         rootNode = xmldoc.getElementsByTagName("resources")
         if len(rootNode) == 1:          
@@ -63,7 +83,7 @@ for f in folderList:
               tag = n.tagName
               if tag == 'string':
                 key = attr['name'].nodeValue
-                value = n.childNodes[0].nodeValue
+                value = getChildXML(n)
                 stringsDict[key] = value.strip()
                 #print(key + " = " + value)
               elif tag == 'string-array':
@@ -90,18 +110,16 @@ for k in langageDict:
 uniqueKeys = OrderedSet(sorted(uniqueKeys))
 #Write CSV
 with codecs.open(outputFilepath, 'w', "utf-8") as f:
-  f.write(u'\ufeff') #UTF8 Marker
-  f.write("key"+csvSep)
-  for k in langageDict:
-    f.write(k + csvSep)
+  writer = csv.writer(f)
+  header = ["key"]
+  header.extend(list(langageDict.keys()))
+  writer.writerow(header)
   for key in uniqueKeys:
-    f.write("\n")
-    f.write(key+csvSep)
-    for k in langageDict:
-      stringsDict = langageDict[k]
+    langStrings = [key]
+    for lang in langageDict:
+      stringsDict = langageDict[lang]
       if key in stringsDict:
-        f.write(unescapeAndroidChar(stringsDict[key]) + csvSep)
+        langStrings.append(unescapeAndroidChar(stringsDict[key]))
       else:
-        f.write(" ")
-        print("Undefined string for key " + str(key) + " in " + str(k))
-
+        langStrings.append(" ") 
+    writer.writerow(langStrings)  
